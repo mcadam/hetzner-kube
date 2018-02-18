@@ -41,6 +41,7 @@ Note: the private key is never uploaded to any server at any time.`,
 		name, _ := cmd.Flags().GetString("name")
 		publicKeyPath, _ := cmd.Flags().GetString("public-key-path")
 		privateKeyPath, _ := cmd.Flags().GetString("private-key-path")
+		generate, _ := cmd.Flags().GetBool("generate")
 
 		// Find home directory.
 		home, err := homedir.Dir()
@@ -54,16 +55,25 @@ Note: the private key is never uploaded to any server at any time.`,
 
 		var (
 			data []byte
+			publicKey string
 		)
-		if publicKeyPath == "-" {
-			data, err = ioutil.ReadAll(os.Stdin)
+		if generate {
+			if pubk, pk, err := GenKeyPair(); err == nil {
+				ioutil.WriteFile(privateKeyPath, []byte(pk), 0600)
+				ioutil.WriteFile(publicKeyPath, []byte(pubk), 0644)
+				publicKey = pubk
+			} else {
+				log.Fatal(err)
+			}
 		} else {
-			data, err = ioutil.ReadFile(publicKeyPath)
+			if publicKeyPath == "-" {
+				data, err = ioutil.ReadAll(os.Stdin)
+			} else {
+				data, err = ioutil.ReadFile(publicKeyPath)
+			}
+			FatalOnError(err)
+			publicKey = string(data)
 		}
-		if err != nil {
-			log.Fatalln(err)
-		}
-		publicKey := string(data)
 
 		opts := hcloud.SSHKeyCreateOpts{
 			Name:      name,
@@ -72,6 +82,7 @@ Note: the private key is never uploaded to any server at any time.`,
 
 		context := AppConf.Context
 		client := AppConf.Client
+		fmt.Println(publicKey)
 		sshKey, _, err := client.SSHKey.Create(context, opts)
 
 		if err != nil {
@@ -99,6 +110,8 @@ func validateFlags(cmd *cobra.Command, args []string) error {
 		return errors.New("flag --name is required")
 	}
 
+	generate, _ := cmd.Flags().GetBool("generate")
+
 	privateKeyPath, _ := cmd.Flags().GetString("private-key-path")
 	if privateKeyPath == "" {
 		return errors.New("flag --private-key-path cannot be empty")
@@ -118,13 +131,15 @@ func validateFlags(cmd *cobra.Command, args []string) error {
 
 	privateKeyPath = strings.Replace(privateKeyPath, "~", home, 1)
 	publicKeyPath = strings.Replace(publicKeyPath, "~", home, 1)
-	if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
-		return errors.New(fmt.Sprintf("could not find private key '%s'", privateKeyPath))
+	if !generate {
+		if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
+			return errors.New(fmt.Sprintf("could not find private key '%s'", privateKeyPath))
 
-	}
+		}
 
-	if _, err := os.Stat(publicKeyPath); os.IsNotExist(err) {
-		return errors.New(fmt.Sprintf("could not find public key '%s'", publicKeyPath))
+		if _, err := os.Stat(publicKeyPath); os.IsNotExist(err) {
+			return errors.New(fmt.Sprintf("could not find public key '%s'", publicKeyPath))
+		}
 	}
 
 	return nil
@@ -133,6 +148,7 @@ func validateFlags(cmd *cobra.Command, args []string) error {
 func init() {
 	sshKeyCmd.AddCommand(sshKeyAddCmd)
 	sshKeyAddCmd.Flags().StringP("name", "n", "", "the name of the key")
+	sshKeyAddCmd.Flags().BoolP("generate", "g", false, "generates the key if not exist")
 	sshKeyAddCmd.Flags().String("private-key-path", "~/.ssh/id_rsa", "the path to the private key")
 	sshKeyAddCmd.Flags().String("public-key-path", "~/.ssh/id_rsa.pub", "the path to the public key")
 

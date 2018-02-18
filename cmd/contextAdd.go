@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"github.com/spf13/cobra"
-	"log"
 	"os"
 	"strings"
 )
@@ -35,19 +34,22 @@ var addCmd = &cobra.Command{
 	`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		name, token := args[0], ""
-		r := bufio.NewReader(os.Stdin)
-		for {
-			fmt.Printf("Token: ")
-			t, err := r.ReadString('\n')
-			FatalOnError(err)
-			t = strings.TrimSpace(t)
-			if t == "" {
-				continue
-			}
+		name := args[0]
+		token,_ := cmd.Flags().GetString("token")
+		if token == "" {
+			r := bufio.NewReader(os.Stdin)
+			for {
+				fmt.Printf("Token: ")
+				t, err := r.ReadString('\n')
+				FatalOnError(err)
+				t = strings.TrimSpace(t)
+				if t == "" {
+					continue
+				}
 
-			token = t
-			break
+				token = t
+				break
+			}
 		}
 
 		// test connection

@@ -166,11 +166,12 @@ func (app *AppConfig) assertActiveContext() error {
 
 func init() {
 	usr, err := user.Current()
-	if err != nil {
-		return
-	}
-	if usr.HomeDir != "" {
-		DefaultConfigPath = filepath.Join(usr.HomeDir, ".hetzner-kube")
+	if err == nil {
+		if usr.HomeDir != "" {
+			DefaultConfigPath = filepath.Join(usr.HomeDir, ".hetzner-kube")
+		}
+	} else {
+		DefaultConfigPath = "/"
 	}
 
 	AppConf = AppConfig{

@@ -11,6 +11,10 @@ import (
 	"log"
 	"time"
 	"github.com/Pallinder/go-randomdata"
+	"crypto/rsa"
+	"encoding/pem"
+	"crypto/x509"
+	"crypto/rand"
 )
 
 func runCmd(node Node, command string) (output string, err error) {
@@ -142,4 +146,27 @@ func FatalOnError(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+//generates a ssh keypair
+func GenKeyPair() (string, string, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", err
+	}
+
+	privateKeyPEM := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)}
+	var private bytes.Buffer
+	if err := pem.Encode(&private, privateKeyPEM); err != nil {
+		return "", "", err
+	}
+
+	// generate public key
+	pub, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return "", "", err
+	}
+
+	public := ssh.MarshalAuthorizedKey(pub)
+	return string(public), private.String(), nil
 }
