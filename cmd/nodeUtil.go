@@ -1,14 +1,14 @@
 package cmd
 
 import (
-	"io/ioutil"
+	"errors"
 	"fmt"
 	"github.com/hetznercloud/hcloud-go/hcloud"
-	"strings"
-	"log"
-	"errors"
-	"time"
 	"github.com/xetys/hetzner-kube/pkg"
+	"io/ioutil"
+	"log"
+	"strings"
+	"time"
 )
 
 func (cluster *Cluster) CreateNodes(suffix string, template Node, datacenters []string, count int, offset int) ([]Node, error) {
@@ -95,7 +95,7 @@ func (cluster *Cluster) ProvisionNodes(nodes []Node) error {
 		numProcs++
 		go func(node Node) {
 			cluster.coordinator.AddEvent(node.Name, "install packages")
-			_, err := runCmd(node, "wget -cO- https://raw.githubusercontent.com/xetys/hetzner-kube/master/install-docker-kubeadm.sh | bash -")
+			_, err := runCmd(node, "wget -cO- https://raw.githubusercontent.com/mcadam/hetzner-kube/master/install-docker-kubeadm.sh | bash -")
 
 			if err != nil {
 				errChan <- err
@@ -136,6 +136,18 @@ func (cluster *Cluster) SetupEncryptedNetwork() error {
 			}
 
 			_, err = runCmd(node, "systemctl enable wg-quick@wg0 && systemctl restart wg-quick@wg0")
+
+			if err != nil {
+				errChan <- err
+			}
+
+			overlayRouteService := GenerateOverlayRouteSystemdService(node)
+			err := writeNodeFile(node, "/etc/systemd/system/overlay-route.service", overlayRouteService, false)
+			if err != nil {
+				errChan <- err
+			}
+
+			_, err = runCmd(node, "systemctl enable overlay-route && systemctl restart overlay-route")
 
 			if err != nil {
 				errChan <- err
@@ -272,8 +284,8 @@ func (cluster *Cluster) InstallMasters() error {
 	commands := []SSHCommand{
 		{"kubeadm init", "kubeadm init --config /root/master-config.yaml"},
 		{"configure kubectl", "rm -rf $HOME/.kube && mkdir -p $HOME/.kube && cp -i /etc/kubernetes/admin.conf $HOME/.kube/config && chown $(id -u):$(id -g) $HOME/.kube/config"},
-		{"install flannel", "kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.9.1/Documentation/kube-flannel.yml"},
-		{"configure flannel", "kubectl -n kube-system patch ds kube-flannel-ds --type json -p '[{\"op\":\"add\",\"path\":\"/spec/template/spec/tolerations/-\",\"value\":{\"key\":\"node.cloudprovider.kubernetes.io/uninitialized\",\"value\":\"true\",\"effect\":\"NoSchedule\"}}]'"},
+		{"install weave", "kubectl apply -f \"https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"},
+		{"apply admin privileges", "kubectl create clusterrolebinding permissive-binding --clusterrole=cluster-admin --user=admin --user=kubelet --group=system:serviceaccounts"},
 		{"install hcloud integration", fmt.Sprintf("kubectl -n kube-system create secret generic hcloud --from-literal=token=%s", AppConf.CurrentContext.Token)},
 		{"deploy cloud controller manager", "kubectl apply -f  https://raw.githubusercontent.com/hetznercloud/hcloud-cloud-controller-manager/master/deploy/v1.0.0.yaml"},
 	}
@@ -457,7 +469,7 @@ func (cluster *Cluster) InstallWorkers(nodes []Node) error {
 			if cluster.HaEnabled {
 				// joinCommand = strings.Replace(joinCommand, "https://" + masterNode.IPAddress + ":6443", "https://127.0.0.1:16443", 1)
 			}
-			_, err := runCmd(node, "kubeadm reset && " + joinCommand)
+			_, err := runCmd(node, "kubeadm reset && "+joinCommand)
 			if err != nil {
 				return err
 			}
@@ -590,8 +602,6 @@ func GenerateMasterConfiguration(masterNode Node, masterNodes, etcdNodes []Node)
 kind: MasterConfiguration
 api:
   advertiseAddress: %s
-networking:
-  podSubnet: 10.244.0.0/16
 apiServerCertSANs:
   - %s
   - 127.0.0.1
@@ -611,6 +621,25 @@ apiServerCertSANs:
 	}
 
 	return masterConfig
+}
+
+func GenerateOverlayRouteSystemdService(node Node) string {
+	serviceTpl := `[Unit]
+Description=Overlay network route for Wireguard
+After=wg-quick@wg0.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/sbin/ip route add 10.96.0.0/16 dev wg0 src %s
+
+[Install]
+WantedBy=multi-user.target
+`
+	return fmt.Sprint(
+		serviceTpl,
+		node.PrivateIPAddress,
+	)
 }
 
 func GenerateEtcdSystemdService(node Node, etcdNodes []Node) string {

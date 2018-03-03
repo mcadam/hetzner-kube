@@ -1,14 +1,22 @@
 #!/bin/bash
 
 installPackages() {
-echo "
-Package: docker-ce
-Pin: version 17.03.*
-Pin-Priority: 1000
-" > /etc/apt/preferences.d/docker-ce
 
-apt-get update
+# setup firewall
+ufw allow ssh
+ufw allow in on eth0 to any port 51820 # vpn on private interface
+ufw allow in on wg0
+ufw allow in on weave # Kubernetes pod overlay interface
+ufw allow 6443 # Kubernetes API secure remote port
+ufw allow 80
+ufw allow 443
+ufw default deny incoming
+ufw --force enable
+ufw status verbose
+
+
 # transport stuff
+apt-get update
 apt-get install -y \
     apt-transport-https \
     ca-certificates \
@@ -31,14 +39,22 @@ EOF
 # prepare wireguard
 add-apt-repository ppa:wireguard/wireguard -y
 
-apt-get update && apt-get install -y docker-ce
-apt-get install -y docker-ce kubelet kubeadm kubectl wireguard linux-headers-$(uname -r) linux-headers-virtual
+apt-get update
+apt-get install -y docker-ce kubelet kubeadm kubernetes-cni kubectl wireguard linux-headers-$(uname -r) linux-headers-virtual
 
 # prepare for hetzners cloud controller manager
 mkdir -p /etc/systemd/system/kubelet.service.d
 cat > /etc/systemd/system/kubelet.service.d/20-hcloud.conf << EOM
 [Service]
 Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external"
+EOM
+
+# prepare for docker
+mkdir -p /etc/systemd/system/docker.service.d
+cat > /etc/systemd/system/docker.service.d/10-docker-opts.conf << EOM
+[Service]
+MountFlags=shared
+Environment="DOCKER_OPTS=--iptables=false --ip-masq=false"
 EOM
 
 systemctl daemon-reload
