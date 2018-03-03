@@ -142,7 +142,7 @@ func (cluster *Cluster) SetupEncryptedNetwork() error {
 			}
 
 			overlayRouteService := GenerateOverlayRouteSystemdService(node)
-			err := writeNodeFile(node, "/etc/systemd/system/overlay-route.service", overlayRouteService, false)
+			err = writeNodeFile(node, "/etc/systemd/system/overlay-route.service", overlayRouteService, false)
 			if err != nil {
 				errChan <- err
 			}
