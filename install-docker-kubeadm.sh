@@ -6,7 +6,6 @@ installPackages() {
 ufw allow ssh
 ufw allow in on eth0 to any port 51820 # vpn on private interface
 ufw allow in on wg0
-ufw allow in on weave # Kubernetes pod overlay interface
 ufw allow 6443 # Kubernetes API secure remote port
 ufw allow 80
 ufw allow 443
@@ -14,6 +13,12 @@ ufw default deny incoming
 ufw --force enable
 ufw status verbose
 
+# add swap for k8s 1.9 with weave
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
 
 # transport stuff
 apt-get update
@@ -40,13 +45,13 @@ EOF
 add-apt-repository ppa:wireguard/wireguard -y
 
 apt-get update
-apt-get install -y docker-ce kubelet kubeadm kubernetes-cni kubectl wireguard linux-headers-$(uname -r) linux-headers-virtual
+apt-get install -y docker-ce kubelet kubeadm kubectl kubernetes-cni wireguard linux-headers-$(uname -r) linux-headers-virtual
 
 # prepare for hetzners cloud controller manager
 mkdir -p /etc/systemd/system/kubelet.service.d
-cat > /etc/systemd/system/kubelet.service.d/20-hcloud.conf << EOM
+cat > /etc/systemd/system/kubelet.service.d/20-kubelet-extras.conf << EOM
 [Service]
-Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external"
+Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external --fail-swap-on=false"
 EOM
 
 # prepare for docker
