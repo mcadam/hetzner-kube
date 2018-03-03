@@ -282,13 +282,13 @@ func (cluster *Cluster) CreateWorkerNodes(sshKeyName string, workerServerType st
 func (cluster *Cluster) InstallMasters() error {
 
 	commands := []SSHCommand{
-		{"kubeadm init", "kubeadm init --config /root/master-config.yaml"},
+		{"kubeadm init", "kubeadm init --config /root/master-config.yaml --ignore-preflight-errors=Swap"},
 		{"configure kubectl", "rm -rf $HOME/.kube && mkdir -p $HOME/.kube && cp -i /etc/kubernetes/admin.conf $HOME/.kube/config && chown $(id -u):$(id -g) $HOME/.kube/config"},
-		{"install weave", "kubectl apply -f \"https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')\""},
+		{"install weave", "sleep 10 && kubectl apply -f \"https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')\""},
 		{"configure wave", "ufw allow in on weave && ufw reload"},
 		{"apply admin privileges", "kubectl create clusterrolebinding permissive-binding --clusterrole=cluster-admin --user=admin --user=kubelet --group=system:serviceaccounts"},
-		{"install hcloud integration", fmt.Sprintf("kubectl -n kube-system create secret generic hcloud --from-literal=token=%s", AppConf.CurrentContext.Token)},
-		{"deploy cloud controller manager", "kubectl apply -f  https://raw.githubusercontent.com/hetznercloud/hcloud-cloud-controller-manager/master/deploy/v1.0.0.yaml"},
+		// {"install hcloud integration", fmt.Sprintf("kubectl -n kube-system create secret generic hcloud --from-literal=token=%s", AppConf.CurrentContext.Token)},
+		// {"deploy cloud controller manager", "kubectl apply -f  https://raw.githubusercontent.com/hetznercloud/hcloud-cloud-controller-manager/master/deploy/v1.0.0.yaml"},
 	}
 	var masterNode Node
 
@@ -449,7 +449,7 @@ func (cluster *Cluster) InstallWorkers(nodes []Node) error {
 	for _, node := range cluster.Nodes {
 		if node.IsMaster {
 			for tries := 0; ; tries++ {
-				output, err := runCmd(node, "kubeadm token create --print-join-command")
+				output, err := runCmd(node, "kubeadm token create --print-join-command | tr '\n' ' ' | awk '{print $0\"--ignore-preflight-errors=Swap\"}'")
 				if tries < 10 && err != nil {
 					return err
 				} else {

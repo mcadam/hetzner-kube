@@ -49,9 +49,9 @@ apt-get install -y docker-ce kubelet kubeadm kubectl kubernetes-cni wireguard li
 
 # prepare for hetzners cloud controller manager
 mkdir -p /etc/systemd/system/kubelet.service.d
-cat > /etc/systemd/system/kubelet.service.d/20-kubelet-extras.conf << EOM
+cat > /etc/systemd/system/kubelet.service.d/90-kubelet-extras.conf << EOM
 [Service]
-Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external --fail-swap-on=false"
+Environment="KUBELET_EXTRA_ARGS=--fail-swap-on=false"
 EOM
 
 # prepare for docker
